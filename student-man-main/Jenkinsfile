@@ -1,1 +1,69 @@
+pipeline {
+    agent any
 
+    environment {
+        REGISTRY = "farzzit"
+        IMAGE = "studentmang-app"
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                git branch: 'main', url: 'https://github.com/medaminehammami/student-management-devops.git'
+            }
+        }
+
+        stage('Build with Maven') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Run SonarQube Analysis') {
+            environment {
+                SONARQUBE = credentials('sonarqube-token')
+            }
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh 'mvn sonar:sonar -Dsonar.projectKey=studentmang-app'
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t $REGISTRY/$IMAGE:latest .'
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push $REGISTRY/$IMAGE:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to Minikube') {
+            steps {
+                sh '''
+                    kubectl apply -f k8s/mysql-deployment.yaml
+                    kubectl apply -f k8s/spring-deployment.yaml
+                    kubectl apply -f k8s/sonarqube-deployment.yaml
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Deployment completed successfully!'
+        }
+        failure {
+            echo '❌ Deployment failed. Check logs in Jenkins console output.'
+        }
+    }
+}
