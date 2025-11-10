@@ -15,7 +15,9 @@ pipeline {
 
         stage('Build with Maven') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                dir('student-man-main') {
+                    sh 'mvn clean package -DskipTests'
+                }
             }
         }
 
@@ -24,36 +26,44 @@ pipeline {
                 SONARQUBE = credentials('sonarqube-token')
             }
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh 'mvn sonar:sonar -Dsonar.projectKey=studentmang-app'
+                dir('student-man-main') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh 'mvn sonar:sonar -Dsonar.projectKey=studentmang-app'
+                    }
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $REGISTRY/$IMAGE:latest .'
+                dir('student-man-main') {
+                    sh 'docker build -t $REGISTRY/$IMAGE:latest .'
+                }
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push $REGISTRY/$IMAGE:latest
-                    '''
+                dir('student-man-main') {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            docker push $REGISTRY/$IMAGE:latest
+                        '''
+                    }
                 }
             }
         }
 
         stage('Deploy to Minikube') {
             steps {
-                sh '''
-                    kubectl apply -f k8s/mysql-deployment.yaml
-                    kubectl apply -f k8s/spring-deployment.yaml
-                    kubectl apply -f k8s/sonarqube-deployment.yaml
-                '''
+                dir('student-man-main') {
+                    sh '''
+                        kubectl apply -f k8s/mysql-deployment.yaml
+                        kubectl apply -f k8s/spring-deployment.yaml
+                        kubectl apply -f k8s/sonarqube-deployment.yaml
+                    '''
+                }
             }
         }
     }
