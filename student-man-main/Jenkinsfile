@@ -21,6 +21,25 @@ pipeline {
             }
         }
 
+        stage('Dependency Check') {
+            steps {
+                dir('student-man-main') {
+                    sh '''
+                    echo "🔍 Running OWASP Dependency-Check (light scan)..."
+                    mvn org.owasp:dependency-check-maven:check \
+                        -Dformat=HTML \
+                        -DfailBuildOnCVSS=7 \
+                        -DskipAssembly=true
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'student-man-main/target/dependency-check-report.html', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage('Run SonarQube Analysis') {
             environment {
                 SONARQUBE = credentials('sonarqube-token')
@@ -55,7 +74,7 @@ pipeline {
                     trivy --config /dev/null image --download-db-only || true
 
                     echo "🔍 Scanning Docker image for HIGH and CRITICAL vulnerabilities..."
-                    trivy image --ignore-unfixed --scanners vuln --light  --timeout 25m --exit-code 0 --severity HIGH,CRITICAL $REGISTRY/$IMAGE:latest 
+                    trivy image --ignore-unfixed --scanners vuln  --light  --timeout 25m --exit-code 0 --severity HIGH,CRITICAL $REGISTRY/$IMAGE:latest
                     '''
                 }
             }
@@ -78,7 +97,7 @@ pipeline {
 
     post {
         success {
-            echo '✅ Build, Security Scan, and Push completed successfully!'
+            echo '✅ Build, Dependency Check, Security Scan, and Push completed successfully!'
         }
         failure {
             echo '❌ Pipeline failed. Check logs for more details.'
