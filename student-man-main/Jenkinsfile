@@ -28,7 +28,12 @@ pipeline {
             steps {
                 dir('student-man-main') {
                     withSonarQubeEnv('SonarQube') {
-                        sh 'mvn sonar:sonar -Dsonar.projectKey=studentmang-app'
+                        sh '''
+                            mvn sonar:sonar \
+                              -Dsonar.projectKey=studentmang-app \
+                              -Dsonar.host.url=http://192.168.49.2:32000 \
+                              -Dsonar.login=$SONARQUBE
+                        '''
                     }
                 }
             }
@@ -42,6 +47,17 @@ pipeline {
             }
         }
 
+        stage('Trivy Scan (Security)') {
+            steps {
+                dir('student-man-main') {
+                    sh '''
+                        echo "🔍 Scanning Docker image for vulnerabilities..."
+                        trivy image --exit-code 0 --severity HIGH,CRITICAL $REGISTRY/$IMAGE:latest
+                    '''
+                }
+            }
+        }
+
         stage('Push to Docker Hub') {
             steps {
                 dir('student-man-main') {
@@ -49,20 +65,9 @@ pipeline {
                         sh '''
                             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                             docker push $REGISTRY/$IMAGE:latest
+                            docker logout
                         '''
                     }
-                }
-            }
-        }
-
-        stage('Deploy to Minikube') {
-            steps {
-                dir('student-man-main') {
-                    sh '''
-                        kubectl apply -f k8s/mysql-deployment.yaml
-                        kubectl apply -f k8s/spring-deployment.yaml
-                        kubectl apply -f k8s/sonarqube-deployment.yaml
-                    '''
                 }
             }
         }
@@ -70,10 +75,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Deployment completed successfully!'
+            echo '✅ Build, Security Scan, and Push completed successfully!'
         }
         failure {
-            echo '❌ Deployment failed. Check logs in Jenkins console output.'
+            echo '❌ Pipeline failed. Check logs for more details.'
         }
     }
 }
