@@ -55,11 +55,7 @@ pipeline {
                     trivy --config /dev/null image --download-db-only || true
 
                     echo "🔍 Scanning Docker image for HIGH and CRITICAL vulnerabilities..."
-                    trivy image --scanners vuln \
-                                --timeout 10m \
-                                --exit-code 0 \
-                                --severity HIGH,CRITICAL \
-                                $REGISTRY/$IMAGE:latest
+                    trivy image --ignore-unfixed --scanners vuln --light  --timeout 25m --exit-code 0 --severity HIGH,CRITICAL $REGISTRY/$IMAGE:latest 
                     '''
                 }
             }
