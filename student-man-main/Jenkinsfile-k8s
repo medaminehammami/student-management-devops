@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+    environment {
+        KUBECONFIG = '/home/jenkins/.kube/config'
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                git branch: 'master', url: 'https://github.com/medaminehammami/student-management-devops.git'
+            }
+        }
+
+        stage('Kube-Score Scan') {
+            steps {
+                dir('student-man-main/k8s') {
+                    sh '''
+                    echo "🧩 Checking YAML best practices with kube-score..."
+                    kube-score score --output-format ci *.yaml || true
+                    '''
+                }
+            }
+        }
+
+        stage('KubeLinter Scan') {
+            steps {
+                dir('student-man-main/k8s') {
+                    sh '''
+                    echo "🔍 Running KubeLinter security audit..."
+                    kubelinter lint . --format pretty || true
+                    '''
+                }
+            }
+        }
+
+        stage('Trivy K8s Scan') {
+            steps {
+                sh '''
+                echo "🔒 Running Trivy Kubernetes cluster audit..."
+                trivy k8s --report summary cluster || true
+                '''
+            }
+        }
+
+        stage('Kubescape (Optional)') {
+            steps {
+                sh '''
+                echo "🧠 Running Kubescape for posture & compliance (NSA/CIS)..."
+                kubescape scan framework nsa || true
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '✅ Kubernetes hardening & security scan complete!'
+        }
+    }
+}
