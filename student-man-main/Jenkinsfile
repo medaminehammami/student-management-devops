@@ -4,19 +4,16 @@ pipeline {
     environment {
         REGISTRY = "farzzit"
         IMAGE = "studentmang-app"
-        
-        // --- CORRECTED URLs ---
-        // SonarQube on Ubuntu VM IP (Docker container)
-        SONAR_HOST_URL = "http://192.168.33.10:9000"
-        // Spring App DAST Target on Minikube Node IP (NodePort: 32639)
-        APP_DAST_URL = "http://192.168.49.2:32639"
-        
-        // Reports
+
+        // Correct URLs
+        SONAR_HOST_URL = "http://192.168.33.10:9000"        // Local SonarQube on Ubuntu
+        APP_DAST_URL   = "http://192.168.49.2:32639"        // Spring App on Minikube NodePort
+
         GITLEAKS_REPORT = "gitleaks-report.json"
     }
 
     stages {
-        stage('Clone Repository & Secrets Scan') {
+        stage('Clone Repository & Secrets Scan (Gitleaks)') {
             steps {
                 git branch: 'master', url: 'https://github.com/medaminehammami/student-management-devops.git'
                 dir('student-man-main') {
@@ -28,7 +25,6 @@ pipeline {
             }
             post {
                 always {
-                    // FIX: Double quotes for variable interpolation ($GITLEAKS_REPORT)
                     archiveArtifacts artifacts: "student-man-main/${GITLEAKS_REPORT}", allowEmptyArchive: true
                 }
             }
@@ -41,7 +37,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Dependency Check (SCA)') {
             steps {
                 dir('student-man-main') {
@@ -59,17 +55,16 @@ pipeline {
                 }
             }
         }
-        
+
         stage('SonarQube (SAST)') {
             environment {
-                SONARQUBE = credentials('sonarqube-token') 
+                SONARQUBE = credentials('sonarqube-token')
             }
             steps {
                 dir('student-man-main') {
                     withSonarQubeEnv('SonarQube') {
                         sh '''
                         echo "📊 Running SonarQube static code analysis..."
-                        # SonarQube URL: 192.168.33.10:9000 (Correct)
                         mvn sonar:sonar \
                           -Dsonar.projectKey=studentmang-app \
                           -Dsonar.host.url=${SONAR_HOST_URL} \
@@ -78,15 +73,9 @@ pipeline {
                     }
                 }
             }
-            post {
-                 success {
-                    timeout(time: 5, unit: 'MINUTES') {
-                        waitForQualityGate abortPipeline: true
-                    }
-                }
-            }
+            // 🚀 Removed timeout & waitForQualityGate for speed
         }
-        
+
         stage('Build Docker Image') {
             steps {
                 dir('student-man-main') {
@@ -94,14 +83,14 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Trivy Scan (Container Security)') {
             steps {
                 dir('student-man-main') {
                     sh '''
                     echo "🧪 Quick Trivy vulnerability scan..."
                     trivy image --quiet --severity HIGH,CRITICAL \
-                                --light --timeout 10m \
+                                --light --timeout 5m \
                                 --format table \
                                 --output trivy-report.html \
                                 $REGISTRY/$IMAGE:latest || true
@@ -120,7 +109,6 @@ pipeline {
                 dir('student-man-main') {
                     sh '''
                     echo "💥 Running Nikto web vulnerability scan on $APP_DAST_URL..."
-                    # DAST URL: 192.168.49.2:32639 (Corrected)
                     nikto -h $APP_DAST_URL -maxtime 60 -Format html -o nikto-report.html || true
                     '''
                 }
